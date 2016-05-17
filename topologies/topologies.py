@@ -52,6 +52,7 @@ class topology:
         This algorithm tests each possible topology on the given basis and
         returns a list of all actual topologies.
         """
+        self.append_topology(subsets)
         # Create a Pool
         if self.cores:
             pool = multiprocessing.Pool(multiprocessing.cpu_count())
