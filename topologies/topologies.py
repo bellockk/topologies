@@ -4,6 +4,8 @@ import sys
 import copy
 import time
 import logging
+import multiprocessing
+import argparse
 
 LOG = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class topology:
     module object oriented and allows its import into other functions to
     control data flow through multiple processors or networks.
     """
-    def __init__(self, nspace):
+    def __init__(self, nspace, num_cores):
         """
         This is the initialization ofunction and when the topology class is
         instantiated this function will automatically be called.
@@ -26,44 +28,38 @@ class topology:
         for i in xrange(int(nspace)):
             masterlist.append(i)
 
-        subsets = allsubsets(masterlist)
+        # Number of cores to use
+        self.cores = num_cores
 
-        if 0:
-            for subset in subsets:
-                LOG.info(subset)
-            LOG.info('\n')
+        subsets = allsubsets(masterlist)
 
         # Test all possibilites and construct the list of actual topologies
 
-        a = self.find_topologies(masterlist, subsets)
+        self.num_topologies = 0
+        self.find_topologies(masterlist, subsets)
 
         # Write the output file
-        for item in a:
-            LOG.info(str(item))
-        LOG.info('\nTotal Topologies: %s' % str(len(a)))
+        LOG.info('\nTotal Number of Topologies: %s' % self.num_topologies)
 
     def append_topology(self, topology):
         if topology:
-            self.topologies.append(topology)
+            LOG.info(topology)
+            self.num_topologies += 1
+
 
     def find_topologies(self, masterlist, subsets):
         """
         This algorithm tests each possible topology on the given basis and
         returns a list of all actual topologies.
         """
-        self.topologies = [subsets]
+        # Create a Pool
+        if self.cores:
+            pool = multiprocessing.Pool(multiprocessing.cpu_count())
 
-        # Apply the tests for a topology.  If it passes all tests add it to
-        # topologies.
+        # Construct possible topolgies
         length = 2**(len(subsets)-2)-1
-        ilength = length
-        curpct = -1
         while length > 0:
-            if 1:
-                pct = 100 - int(float(length) / float(ilength) * 100.)
-                if not pct % 10 and pct != curpct:
-                    curpct = pct
-                    LOG.info(str(pct)+'% Complete')
+            # Generate potential topology to be tested
             length = length-1
             bindex = copy.deepcopy(length)
             item = [[]]
@@ -76,8 +72,14 @@ class topology:
             item.append(masterlist)
 
             # Test if item is a topology
-            self.append_topology(test_topology(item))
-        return self.topologies
+            if self.cores:
+                pool.apply_async(test_topology, (item,),
+                                 callback=self.append_topology)
+            else:
+                self.append_topology(test_topology(item))
+        if self.cores:
+            pool.close()
+            pool.join()
 
 
 def test_topology(item):
@@ -184,17 +186,20 @@ def permutations(masterlist):
 # This is the test algorithm.  If this module is executed on its own and not
 # imported.  This code will run after the topology class is defined.
 if __name__ == '__main__':
+    PARSER = argparse.ArgumentParser(
+        description='Number of topologies on a set with n points.',
+        prog='topologies')
+    PARSER.add_argument('-j', metavar='N', type=int, dest='cores',
+                        default=None, help='number of processing cores to use')
+    PARSER.add_argument('points', metavar='N', type=int,
+                        help='number of points in metric')
+    PARSER.add_argument('-V', '--version', action='version',
+                        version='%s(prog)s 1.0')
+    ARGS = PARSER.parse_args()
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(message)s')
-    if len(sys.argv) == 1:
-        LOG.info('You must enter the value for nspace to evaluate.')
-        sys.exit()
-    nspace = sys.argv[1]
-    if len(sys.argv) == 2:
-        a = topology(sys.argv[1])
-    else:
-        a = topology(sys.argv[1], sys.argv[2])
+    topology(ARGS.points, ARGS.cores)
     ftime = time.time()
     ttime = round(ftime-stime, 2)
     LOG.info('Time to complete: %s', str(ttime))
