@@ -3,6 +3,9 @@
 import sys
 import copy
 import time
+import logging
+
+LOG = logging.getLogger(__name__)
 
 stime = time.time()
 
@@ -13,50 +16,42 @@ class topology:
     module object oriented and allows its import into other functions to
     control data flow through multiple processors or networks.
     """
-    def __init__(self, nspace, logfile=None):
+    def __init__(self, nspace):
         """
         This is the initialization ofunction and when the topology class is
         instantiated this function will automatically be called.
         """
-        self.logfile = logfile
-        if self.logfile is not None:
-            self.logoutput = open(logfile, 'w')
-
         # Generate the list of possible topologies
         masterlist = []
         for i in xrange(int(nspace)):
             masterlist.append(i)
 
-        allsubsets = self.allsubsets(masterlist)
+        subsets = allsubsets(masterlist)
 
         if 0:
-            for subset in allsubsets:
-                self.PrintToLog(subset)
-            self.PrintToLog('\n')
+            for subset in subsets:
+                LOG.info(subset)
+            LOG.info('\n')
 
         # Test all possibilites and construct the list of actual topologies
 
-        a = self.topologies(masterlist, allsubsets)
+        a = self.topologies(masterlist, subsets)
 
         # Write the output file
-        if 1:
-            for item in a:
-                self.PrintToLog(str(item))
-        if 1:
-            self.PrintToLog('\nTotal Topologies: %s' % str(len(a)))
-        if self.logfile:
-            self.logoutput.close()
+        for item in a:
+            LOG.info(str(item))
+        LOG.info('\nTotal Topologies: %s' % str(len(a)))
 
-    def topologies(self, masterlist, allsubsets):
+    def topologies(self, masterlist, subsets):
         """
         This algorithm tests each possible topology on the given basis and
         returns a list of all actual topologies.
         """
-        topologies = [allsubsets]
+        topologies = [subsets]
 
         # Apply the tests for a topology.  If it passes all tests add it to
         # topologies.
-        length = 2**(len(allsubsets)-2)-1
+        length = 2**(len(subsets)-2)-1
         ilength = length
         curpct = -1
         while length > 0:
@@ -64,7 +59,7 @@ class topology:
                 pct = 100 - int(float(length) / float(ilength) * 100.)
                 if not pct % 10 and pct != curpct:
                     curpct = pct
-                    print str(pct)+'%'
+                    LOG.info(str(pct)+'% Complete')
             length = length-1
             bindex = copy.deepcopy(length)
             item = [[]]
@@ -72,7 +67,7 @@ class topology:
             while bindex >= 1:
                 subindex = subindex + 1
                 if bindex % 2:
-                    item.append(allsubsets[subindex])
+                    item.append(subsets[subindex])
                 bindex = bindex/2
             item.append(masterlist)
 
@@ -87,10 +82,10 @@ class topology:
                     if not test:
                         break
                     for j in xrange(i+1, len(itemsubsets) - 1):
-                        intersection = self.intersection(itemsubsets[i],
-                                                         itemsubsets[j])
-                        intersection.sort()
-                        if intersection not in item:
+                        intersect = intersection(itemsubsets[i],
+                                                    itemsubsets[j])
+                        intersect.sort()
+                        if intersect not in item:
                             test = 0
                             break
 
@@ -108,7 +103,7 @@ class topology:
                         if nbindex % 2:
                             family.append(item[nsubindex])
                         nbindex = nbindex/2
-                    familyunion = self.union(family)
+                    familyunion = union(family)
                     familyunion.sort()
                     if familyunion not in item:
                         test = 0
@@ -121,71 +116,68 @@ class topology:
         # Return the resulting list of topologies
         return topologies
 
-    def allsubsets(self, masterlist):
-        """
-        This funcion returns a list of all possible subsets that can be
-        constructed from the master list.
-        """
-        subsets = [[]]
-        for item in masterlist:
-            for i in xrange(len(subsets)):
-                alist = copy.deepcopy(subsets[i])
-                alist.append(item)
-                subsets.append(alist)
-        return subsets
 
-    def union(self, setofsets):
-        """
-        This function returns the union of the list of sets it recieves as an
-        arguement.
-        """
-        return list(set().union(*setofsets))
+def allsubsets(masterlist):
+    """
+    This funcion returns a list of all possible subsets that can be
+    constructed from the master list.
+    """
+    subsets = [[]]
+    for item in masterlist:
+        for i in xrange(len(subsets)):
+            alist = copy.deepcopy(subsets[i])
+            alist.append(item)
+            subsets.append(alist)
+    return subsets
 
-    def intersection(self, A, B):
-        """
-        This function returns the intersection of the two arguements that are
-        sent to it.  The function is restricted to the intersection of only two
-        sets to improve performance.
-        """
-        return list(set(A).intersection(B))
+def union(setofsets):
+    """
+    This function returns the union of the list of sets it recieves as an
+    arguement.
+    """
+    return list(set().union(*setofsets))
 
-    def compliment(self, subset, X):
-        """
-        This function returns the compliment of a set relative to the
-        masterlist.
-        """
-        return [i for i in X if i not in subset]
+def intersection(A, B):
+    """
+    This function returns the intersection of the two arguements that are
+    sent to it.  The function is restricted to the intersection of only two
+    sets to improve performance.
+    """
+    return list(set(A).intersection(B))
 
-    def permutations(self, masterlist):
-        """
-        This is a function which is not used by this class but that I am very
-        proud of.  It returns a list of all permutations of a given set without
-        repeats.  It also does this by a method faster that binary logic
-        substitution.
-        """
-        permutations = []
-        for item in masterlist:
-            permutations.append([item])
-        for item in xrange(len(masterlist)-1):
-            newpermutations = []
-            for item in permutations:
-                for subitem in self.compliment(item, masterlist):
-                    newpermutations.append([subitem]+item)
-                permutations = newpermutations
-        return permutations
+def compliment(subset, X):
+    """
+    This function returns the compliment of a set relative to the
+    masterlist.
+    """
+    return [i for i in X if i not in subset]
 
-    def PrintToLog(self, string):
-        if self.logfile is None:
-            print string
-        else:
-            self.logoutput.write('%s\n' % string)
+def permutations(masterlist):
+    """
+    This is a function which is not used by this class but that I am very
+    proud of.  It returns a list of all permutations of a given set without
+    repeats.  It also does this by a method faster that binary logic
+    substitution.
+    """
+    permutations = []
+    for item in masterlist:
+        permutations.append([item])
+    for item in xrange(len(masterlist)-1):
+        newpermutations = []
+        for item in permutations:
+            for subitem in compliment(item, masterlist):
+                newpermutations.append([subitem]+item)
+            permutations = newpermutations
+    return permutations
 
 # This is the test algorithm.  If this module is executed on its own and not
 # imported.  This code will run after the topology class is defined.
 if __name__ == '__main__':
-
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(message)s')
     if len(sys.argv) == 1:
-        print 'You must enter the value for nspace to evaluate.'
+        LOG.info('You must enter the value for nspace to evaluate.')
         sys.exit()
     nspace = sys.argv[1]
     if len(sys.argv) == 2:
@@ -194,4 +186,4 @@ if __name__ == '__main__':
         a = topology(sys.argv[1], sys.argv[2])
     ftime = time.time()
     ttime = round(ftime-stime, 2)
-    print 'Time to complete: %s' % str(ttime)
+    LOG.info('Time to complete: %s', str(ttime))
