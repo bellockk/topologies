@@ -1,11 +1,11 @@
-#!/usr/bin/env python2.2
+#!/usr/bin/env python
 
-import sys
 import copy
 import time
 import logging
 import multiprocessing
 import argparse
+import itertools
 
 LOG = logging.getLogger(__name__)
 
@@ -17,21 +17,22 @@ class topology:
     Define the topology class.  This makes the code contained within this
     module object oriented and allows its import into other functions to
     control data flow through multiple processors or networks.
+
+    https://en.wikipedia.org/wiki/Finite_topological_space
+    https://oeis.org/A000798
     """
     def __init__(self, nspace, num_cores):
         """
-        This is the initialization ofunction and when the topology class is
+        This is the initialization function and when the topology class is
         instantiated this function will automatically be called.
         """
         # Generate the list of possible topologies
-        masterlist = []
-        for i in xrange(int(nspace)):
-            masterlist.append(i)
+        masterlist = [i for i in range(nspace)]
 
         # Number of cores to use
         self.cores = num_cores
 
-        subsets = allsubsets(masterlist)
+        subsets = powerset(masterlist)
 
         # Test all possibilites and construct the list of actual topologies
 
@@ -45,35 +46,31 @@ class topology:
         if topology:
             LOG.info(topology)
             self.num_topologies += 1
-
+        self.workers.release()
 
     def find_topologies(self, masterlist, subsets):
         """
         This algorithm tests each possible topology on the given basis and
         returns a list of all actual topologies.
         """
-        self.append_topology(subsets)
         # Create a Pool
         if self.cores:
-            pool = multiprocessing.Pool(multiprocessing.cpu_count())
+            processes = multiprocessing.cpu_count()
+            queue_size = 1000
+            pool = multiprocessing.Pool(processes)
+            self.workers = multiprocessing.Semaphore(processes + queue_size)
 
         # Construct possible topolgies
-        length = 2**(len(subsets)-2)-1
-        while length > 0:
-            # Generate potential topology to be tested
-            length = length-1
-            bindex = copy.deepcopy(length)
-            item = [[]]
-            subindex = 0
-            while bindex >= 1:
-                subindex = subindex + 1
-                if bindex % 2:
-                    item.append(subsets[subindex])
-                bindex = bindex/2
+        for item in powerset_generator(subsets[1:-1]):
+            item.insert(0, [])
             item.append(masterlist)
+            if item == [[], masterlist] or item == subsets:
+                self.append_topology(item)
+                continue
 
             # Test if item is a topology
             if self.cores:
+                self.workers.acquire()
                 pool.apply_async(test_topology, (item,),
                                  callback=self.append_topology)
             else:
@@ -89,38 +86,21 @@ def test_topology(item):
 
     # Test that the intersection of any two members of the possible
     # topology is in the possible topology.
-    if test:
-        itemsubsets = item
-        for i in xrange(len(itemsubsets)-1):
-            if not test:
-                break
-            for j in xrange(i+1, len(itemsubsets) - 1):
-                intersect = intersection(itemsubsets[i],
-                                         itemsubsets[j])
-                intersect.sort()
-                if intersect not in item:
-                    test = 0
-                    break
+    for pair in itertools.combinations(item, 2):
+        intersect = intersection(pair[0], pair[1])
+        intersect.sort()
+        if intersect not in item:
+            test = 0
+            break
 
     # Test that the union of any family of subsets is contained in the
     # possible topology.
-    if test:
-        nlength = 2**(len(item)-1)
-        while nlength > 0:
-            nlength = nlength - 1
-            nbindex = copy.deepcopy(nlength)
-            family = []
-            nsubindex = -1
-            while nbindex >= 1:
-                nsubindex = nsubindex + 1
-                if nbindex % 2:
-                    family.append(item[nsubindex])
-                nbindex = nbindex/2
-            familyunion = union(family)
-            familyunion.sort()
-            if familyunion not in item:
-                test = 0
-                break
+    for family in powerset_generator(item):
+        family_union = union(family)
+        family_union.sort()
+        if family_union not in item:
+            test = 0
+            break
 
     # If it passes all tests add the topology to the final list.
     if test:
@@ -128,18 +108,25 @@ def test_topology(item):
     return None
 
 
-def allsubsets(masterlist):
+class powerset_generator(object):
+
+    def __init__(self, i, start_index=0):
+        self.i = i
+        self.start_index = start_index
+
+    def __iter__(self):
+        for subset in itertools.chain.from_iterable(
+                itertools.combinations(self.i, r) for r in range(
+                    self.start_index, len(self.i)+1)):
+            yield list(subset)
+
+
+def powerset(masterlist):
     """
     This funcion returns a list of all possible subsets that can be
     constructed from the master list.
     """
-    subsets = [[]]
-    for item in masterlist:
-        for i in xrange(len(subsets)):
-            alist = copy.deepcopy(subsets[i])
-            alist.append(item)
-            subsets.append(alist)
-    return subsets
+    return list(powerset_generator(masterlist))
 
 
 def union(setofsets):
@@ -148,6 +135,7 @@ def union(setofsets):
     arguement.
     """
     return list(set().union(*setofsets))
+
 
 def intersection(A, B):
     """
@@ -158,31 +146,13 @@ def intersection(A, B):
     return list(set(A).intersection(B))
 
 
-def compliment(subset, X):
-    """
-    This function returns the compliment of a set relative to the
-    masterlist.
-    """
-    return [i for i in X if i not in subset]
+def verify():
+    import urllib2
+    import json
+    f = urllib2.urlopen("https://oeis.org/search?fmt=json&q=id:A000798")
+    doc = json.loads(f.read())
+    data = [int(n) for n in doc['results'][0]['data'].split(',')]
 
-
-def permutations(masterlist):
-    """
-    This is a function which is not used by this class but that I am very
-    proud of.  It returns a list of all permutations of a given set without
-    repeats.  It also does this by a method faster that binary logic
-    substitution.
-    """
-    permutations = []
-    for item in masterlist:
-        permutations.append([item])
-    for item in xrange(len(masterlist)-1):
-        newpermutations = []
-        for item in permutations:
-            for subitem in compliment(item, masterlist):
-                newpermutations.append([subitem]+item)
-            permutations = newpermutations
-    return permutations
 
 # This is the test algorithm.  If this module is executed on its own and not
 # imported.  This code will run after the topology class is defined.
