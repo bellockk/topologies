@@ -11,9 +11,9 @@ def topologies(N, cores):
     num_subsets = 2**N
     num = 1
     logging.info([0, num_subsets])
-    for item in [list(s) for s in itertools.chain.from_iterable(
+    for item in (list(s) for s in itertools.chain.from_iterable(
             itertools.combinations(xrange(1, num_subsets - 1),
-                                   r) for r in xrange(1, num_subsets+1))]:
+                                   r) for r in xrange(1, num_subsets+1))):
         item.insert(0, 0)
         item.append(num_subsets-1)
 
@@ -27,8 +27,8 @@ def topologies(N, cores):
             continue
 
         # Union of any family
-        for family in [list(s) for s in itertools.chain.from_iterable(
-                itertools.combinations(item, r) for r in xrange(len(item)+1))]:
+        for family in (list(l) for l in itertools.chain.from_iterable(
+                itertools.combinations(item, t) for t in xrange(len(item)+1))):
             if family != [] and reduce(operator.ior, family) not in item:
                 test = False
                 break
