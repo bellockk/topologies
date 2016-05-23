@@ -5,15 +5,15 @@ import logging
 
 LOG = logging.getLogger(__name__)
 
+
 def topologies(N, cores):
     stime = time.time()
     num_subsets = 2**N
-    subsets = range(num_subsets)
     num = 1
     logging.info([0, num_subsets])
     for item in [list(s) for s in itertools.chain.from_iterable(
-            itertools.combinations(subsets[1:-1], r) for r in xrange(
-                1, num_subsets+1))]:
+            itertools.combinations(xrange(1, num_subsets - 1),
+                                   r) for r in xrange(1, num_subsets+1))]:
         item.insert(0, 0)
         item.append(num_subsets-1)
 
@@ -39,6 +39,12 @@ def topologies(N, cores):
     ttime = round(ftime-stime, 2)
     LOG.info('Number of topolgies: %s', num)
     LOG.info('Time to complete: %s', str(ttime))
+    if verify()[N] == num:
+        status = 'PASS'
+    else:
+        status = 'FAIL'
+    LOG.info('Verifying against OEIS: %s', status)
+
 
 def verify():
     import urllib2
@@ -46,4 +52,3 @@ def verify():
     f = urllib2.urlopen("https://oeis.org/search?fmt=json&q=id:A000798")
     doc = json.loads(f.read())
     return [int(n) for n in doc['results'][0]['data'].split(',')]
-
